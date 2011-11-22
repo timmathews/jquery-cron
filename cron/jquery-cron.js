@@ -156,12 +156,12 @@
     };
     
     var combinations = {
-        "minute" : /^(\*\s){4}\*$/,               // "* * * * *"
-        "hour"   : /^\d{1,2}\s(\*\s){3}\*$/,      // "? * * * *"
-        "day"    : /^(\d{1,2}\s){2}(\*\s){2}\*$/, // "? ? * * *"
-        "week"   : /^(\d{1,2}\s){2}(\*\s){2}\d{1,2}$/, // "? ? * * ?"
-        "month"  : /^(\d{1,2}\s){3}\*\s\*$/, // "? ? ? * *"
-        "year"   : /^(\d{1,2}\s){4}\*$/ // "? ? ? ? *"
+        "minute" : /^(\*\s){4}\*$/,                                          // "* * * * *"
+        "hour"   : /^\d{1,2}(,\d{1,2})*\s(\*\s){3}\*$/,                      // "? * * * *"
+        "day"    : /^(\d{1,2}(,\d{1,2})*\s){2}(\*\s){2}\*$/,                 // "? ? * * *"
+        "week"   : /^(\d{1,2}(,\d{1,2})*\s){2}(\*\s){2}\d{1,2}(,\d{1,2})*$/, // "? ? * * ?"
+        "month"  : /^(\d{1,2}(,\d{1,2})*\s){3}\*\s\*$/,                      // "? ? ? * *"
+        "year"   : /^(\d{1,2}(,\d{1,2})*\s){4}\*$/                           // "? ? ? ? *"
     };
 
     // ------------------ internal functions ---------------
@@ -172,7 +172,7 @@
 
     function getCronType(cron_str) {
         // check format of initial cron value
-        var valid_cron = /^((\d{1,2}|\*)\s){4}(\d{1,2}|\*)$/
+        var valid_cron = /^((?:[*]|(?:\d+(?:-\d+)?)(?:,\d+(?:-\d+)?)*)\s){4}(?:[*]|(?:\d+(?:-\d+)?)(?:,\d+(?:-\d+)?)*)$/
         if (typeof cron_str != "string" || !valid_cron.test(cron_str)) {
             $.error("cron: invalid initial value");
             return undefined;
@@ -184,8 +184,13 @@
         var maxval = [59, 23, 31, 12,  6];
         for (var i = 0; i < d.length; i++) {
             if (d[i] == "*") continue;
-            var v = parseInt(d[i]);
-            if (defined(v) && v <= maxval[i] && v >= minval[i]) continue;
+            if(d[i].indexOf(',')) {
+                var q = d[i].split(",");
+                if (Math.max.apply(null, q) <= maxval[i] && Math.min.apply(null, q) >= minval[i]) continue;
+            } else {
+                var v = parseInt(d[i]);
+                if (defined(v) && v <= maxval[i] && v >= minval[i]) continue;
+            }
 
             $.error("cron: invalid value found (col "+(i+1)+") in " + o.initial);
             return undefined;
@@ -276,7 +281,7 @@
                     .end();
             
             block["dom"] = $("<span class='cron-block cron-block-dom'>"
-                    + " on the <select name='cron-dom'>" + str_opt_dom 
+                    + " on the <select multiple name='cron-dom'>" + str_opt_dom 
                     + "</select> </span>")
                 .appendTo(this)
                 .data("root", this)
@@ -286,7 +291,7 @@
                     .end();
 
             block["month"] = $("<span class='cron-block cron-block-month'>"
-                    + " of <select name='cron-month'>" + str_opt_month 
+                    + " of <select multiple name='cron-month'>" + str_opt_month 
                     + "</select> </span>")
                 .appendTo(this)
                 .data("root", this)
@@ -296,7 +301,7 @@
                     .end();
 
             block["mins"] = $("<span class='cron-block cron-block-mins'>"
-                    + " at <select name='cron-mins'>" + str_opt_mih 
+                    + " at <select multiple name='cron-mins'>" + str_opt_mih 
                     + "</select> minutes past the hour </span>")
                 .appendTo(this)
                 .data("root", this)
@@ -306,7 +311,7 @@
                     .end();
 
             block["dow"] = $("<span class='cron-block cron-block-dow'>"
-                    + " on <select name='cron-dow'>" + str_opt_dow
+                    + " on <select multiple name='cron-dow'>" + str_opt_dow
                     + "</select> </span>")
                 .appendTo(this)
                 .data("root", this)
@@ -316,8 +321,8 @@
                     .end();
 
             block["time"] = $("<span class='cron-block cron-block-time'>"
-                    + " at <select name='cron-time-hour' class='cron-time-hour'>" + str_opt_hid
-                    + "</select>:<select name='cron-time-min' class='cron-time-min'>" + str_opt_mih
+                    + " at <select multiple name='cron-time-hour' class='cron-time-hour'>" + str_opt_hid
+                    + "</select>:<select multiple name='cron-time-min' class='cron-time-min'>" + str_opt_mih
                     + " </span>")
                 .appendTo(this)
                 .data("root", this)
@@ -369,15 +374,31 @@
             for (var i = 0; i < targets.length; i++) {
                 var tgt = targets[i];
                 if (tgt == "time") {
-                    block[tgt]
-                        .find("select.cron-time-hour")
-                            .val(v["hour"]).gentleSelect("update")
-                            .end()
-                        .find("select.cron-time-min")
-                            .val(v["mins"]).gentleSelect("update")
-                        .end();
-                } else {;
-                    block[tgt].find("select").val(v[tgt]).gentleSelect("update");
+                    var qh = v["hour"].split(',');
+                    var qm = v["mins"].split(',');
+                    var th = block[tgt].find("select.cron-time-hour");
+                    var tm = block[tgt].find("select.cron-time-min");
+
+                    th.children().each(function(index) {
+                        if( $.inArray($(this).attr("value"), qh) >= 0 )
+                            $(this).attr("selected","selected");
+                    });
+                    
+                    tm.children().each(function(index) {
+                        if( $.inArray($(this).attr("value"), qm) >= 0 )
+                            $(this).attr("selected","selected");
+                    });
+
+                    th.gentleSelect("update");
+                    tm.gentleSelect("update");
+                } else {
+                    var qo = v[tgt].split(',');
+                    var to = block[tgt].find("select");
+                    to.children().each(function(index) {
+                        if( $.inArray($(this).attr("value"), qo) >= 0 )
+                            $(this).attr("selected","selected");
+                    });
+                    to.gentleSelect("update");
                 }
             }
             

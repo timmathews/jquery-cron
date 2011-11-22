@@ -27,6 +27,8 @@
         columns   : undefined,
         rows      : undefined,
         title     : undefined,
+        prompt    : "Make A Selection",
+        maxDisplay: 4,
         openSpeed       : 400,
         closeSpeed      : 400,
         openEffect      : "slide",
@@ -40,10 +42,6 @@
     }
 
     function hasError(c, o) {
-        if (c.attr("multiple") == true) {
-            $.error("Sorry, gentleSelect does not work with multiple=true yet");
-            return true;
-        }
         if (defined(o.columns) && defined(o.rows)) {
             $.error("gentleSelect: You cannot supply both 'rows' and 'columns'");
             return true;
@@ -81,15 +79,27 @@
         return false;
     }
 
+    var o = null; // Make options global
+
     var methods = {
         init : function(options) {
-            var o = $.extend({}, defaults, options);
+            o = $.extend({}, defaults, options);
 
             if (hasError(this, o)) { return this; }; // check for errors
             this.hide(); // hide original select box
             
             // initialise <span> to replace select box
-            var label = $("<span class='gentleselect-label'>" + this.find(":selected").text() + "</span>")
+            
+            // This way, we can handle multiple selections
+            var selected = this.find(":selected");
+            if(selected.length > o.maxDisplay)
+                var label_text = "Multiple Selections"
+            else if(selected.length < 1)
+                var label_text = o.prompt;
+            else
+                var label_text = selected.map(function(){return $(this).text();}).get().join(", ");
+            
+            var label = $("<span class='gentleselect-label'>" + label_text + "</span>")
                 .insertBefore(this)
                 .bind("mouseenter.gentleselect", event_handlers.labelHoverIn)
                 .bind("mouseleave.gentleselect", event_handlers.labelHoverOut)
@@ -112,11 +122,18 @@
             var dialog = $("<div class='gentleselect-dialog'></div>")
                 .append(ul)
                 .insertAfter(label)
-                .bind("click.gentleselect", event_handlers.dialogClick)
                 .bind("mouseleave.gentleselect", event_handlers.dialogHoverOut)
                 .data("label", label)
                 .data("root", this);
             this.data("dialog", dialog);
+           
+            if(this.attr("multiple")) {
+                dialog.data("multiple", true);
+                dialog.bind("click.gentleselect", event_handlers.multiselectDialogClick);
+            } else {
+                dialog.data("multiple", false);
+                dialog.bind("click.gentleselect", event_handlers.dialogClick);
+            }
 
             // if to be displayed in columns
             if (defined(o.columns) || defined(o.rows)) {
@@ -176,14 +193,35 @@
         update : function() {
             var root = this;
             var v = this.val(); // current value of select box
-            this.data("dialog").find("li").each(function() {
-                if ($(this).data("value") == v) {
-                    $(this).addClass("selected");
-                    root.data("label").text($(this).data("name"));
-                } else {
-                    $(this).removeClass("selected");
-                };
-            });
+            if( $.isArray(v) )
+            {
+                this.data("dialog").find("li").each(function() {
+                    if($.inArray($(this).data("value"), v) >= 0) {
+                        $(this).addClass("selected");
+                    }
+                });
+                
+                // This way, we can handle multiple selections
+                var selected = this.find(":selected");
+                if(selected.length > o.maxDisplay)
+                    var label_text = "Multiple Selections"
+                else if(selected.length < 1)
+                    var label_text = o.prompt;
+                else
+                    var label_text = selected.map(function(){return $(this).text();}).get().join(", ");
+                
+                this.data("label").text(label_text);
+                   
+            } else {
+                this.data("dialog").find("li").each(function() {
+                    if ($(this).data("value") == v) {
+                        $(this).addClass("selected");
+                        root.data("label").text($(this).data("name"));
+                    } else {
+                        $(this).removeClass("selected");
+                    };
+                });
+            }
             return this;
         }
     };
@@ -239,6 +277,37 @@
                 // update actual selectbox
                 var actual = $(this).data("root").val(value).trigger("change");
                 
+            }
+        },
+
+        multiselectDialogClick : function(e) {
+            var clicked = $(e.target);
+            var opts = $(this).data("root").data("options");
+            if (clicked.is("li") && !clicked.hasClass("gentleselect-dummy")) {
+                var value = clicked.data("value");
+                var name = clicked.data("name");
+                var label = $(this).data("label");
+            
+                // update selected li
+                if(clicked.hasClass("selected")) {
+                    clicked.removeClass("selected");
+                } else {
+                    clicked.addClass("selected");
+                }
+                
+                var selected = $(this).find("li.selected")
+                                    .map(function(){return $(this).data("value");}).get();
+                var selected_text = $(this).find("li.selected")
+                                    .map(function(){return $(this).text();}).get().sort().join(", ");
+                
+                if(selected.length > opts.maxDisplay)
+                    label.text("Multiple Selections")
+                else if(selected.length < 1)
+                    label.text(opts.prompt);
+                else
+                    label.text(selected_text);
+                
+                var actual = $(this).data("root").val(selected).trigger("change");
             }
         },
 
